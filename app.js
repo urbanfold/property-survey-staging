@@ -801,6 +801,7 @@
                     draftWritesEnabled = true;
                     activeCloudVersion = draft.baseCloudVersion || activeCloudVersion;
                     showSurveySource('Draft from this device. Changes have not been submitted.');
+                    setSaveStatus('Device draft opened. Save progress to verify changes in the cloud.', 'device');
                 };
                 const { snapshot: restored, hasCloudProgress } = await fetchSurveySnapshot(id, context);
                 checkSession(context);
@@ -817,6 +818,7 @@
                 showSurveySource(matchingDraft
                     ? 'Saved survey loaded from the database. A separate draft on this device is also available.'
                     : 'Saved survey loaded from the database.', matchingDraft ? openDeviceDraft : null);
+                setSaveStatus('Saved survey opened from the database.', 'cloud');
             } catch (error) {
                 if (sessionIsCurrent(context)) alert('Unable to open survey: ' + error.message);
             } finally { if (sessionIsCurrent(context)) setLoading(false); }
