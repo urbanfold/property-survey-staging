@@ -1,0 +1,24 @@
+name: Review staging checkout safety
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/create-survey-checkout/**'
+      - 'tests/test_staging_checkout_safety.mjs'
+      - '.github/workflows/review-staging-checkout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-staging-checkout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static fail-closed checks (no deployment or Stripe calls)
+        run: node --test tests/test_staging_checkout_safety.mjs
