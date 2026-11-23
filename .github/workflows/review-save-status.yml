@@ -25,3 +25,5 @@ jobs:
 
       - name: Check staging administrator export access
         run: node tests/test_staging_admin_export_identity.cjs
+      - name: Check saved-survey PDF read-only flow
+        run: node --test tests/test_saved_survey_pdf.mjs
