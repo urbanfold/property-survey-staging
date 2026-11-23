@@ -14,7 +14,7 @@ permissions:
 jobs:
   test-staging-checkout:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,3 +22,8 @@ jobs:
           node-version: '22'
       - name: Static fail-closed checks (no deployment or Stripe calls)
         run: node --test tests/test_staging_checkout_safety.mjs
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check staging checkout Edge Function (no deployment)
+        run: deno check supabase/functions/create-survey-checkout/index.ts
