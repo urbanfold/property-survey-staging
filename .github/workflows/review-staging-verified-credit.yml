@@ -1,0 +1,24 @@
+name: Review staging verified credit approval
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/staging-survey-verify-and-approve-test-credit/**'
+      - 'tests/test_staging_verified_credit_approval.mjs'
+      - '.github/workflows/review-staging-verified-credit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify safety guards without deploying
+        run: node --test tests/test_staging_verified_credit_approval.mjs
