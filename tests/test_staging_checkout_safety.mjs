@@ -25,3 +25,11 @@ test('checkout does not grant survey credits or use a live Stripe key', () => {
   assert.doesNotMatch(source, /sk_live_|rk_live_/);
   assert.doesNotMatch(source, /survey_credit_purchases|record_survey_purchase|service_role/);
 });
+
+test('staging checkout return verifies with the server before showing credit', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(app, /staging-survey-verify-and-approve-test-credit/);
+  assert.match(app, /data\?\.verified !== true \|\| data\?\.approved !== true/);
+  assert.match(app, /await checkPurchasedCredit\(\)/);
+  assert.match(app, /Test payment credit is not confirmed/);
+});
