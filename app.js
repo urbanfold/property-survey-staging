@@ -450,6 +450,11 @@
                         button.textContent = 'Download Survey Pack (ZIP)';
                         button.onclick = event => { event.stopPropagation(); downloadSurveyPack(prop.id, prop.address); };
                         item.appendChild(button);
+                        const pdfButton = document.createElement('button');
+                        pdfButton.className = 'btn btn-pdf';
+                        pdfButton.textContent = 'Download Measurements PDF';
+                        pdfButton.onclick = event => { event.stopPropagation(); downloadSavedSurveyPDF(prop.id); };
+                        item.appendChild(pdfButton);
                     }
                     list.appendChild(item);
                 }
@@ -468,6 +473,23 @@
                     measurements: fields.map(([key, label]) => `${label}: ${present(room[key]) ? room[key] + ' m' : 'Not recorded'}`),
                     notes: present(room.add) ? String(room.add).trim() : '' }];
             });
+        }
+
+        // Staging administrator only: render a saved cloud snapshot without resubmitting
+        // or altering the survey currently open in the editor.
+        async function downloadSavedSurveyPDF(propertyId) {
+            if (!isStagingExportAdmin() || !currentUser) return;
+            const context = sessionContext();
+            setLoading(true, 'Preparing saved survey PDF...');
+            try {
+                const { snapshot } = await fetchSurveySnapshot(propertyId, context);
+                checkSession(context);
+                await generatePDF(snapshot, context);
+            } catch (error) {
+                if (sessionIsCurrent(context)) alert('Unable to download saved survey PDF: ' + error.message);
+            } finally {
+                if (sessionIsCurrent(context)) setLoading(false);
+            }
         }
 
         async function downloadSurveyPack(propertyId, address) {
@@ -1253,9 +1275,10 @@
             if (document.visibilityState !== 'visible') clearLeicaMeasurementTarget();
         });
 
-        async function generatePDF() {
-            const context = sessionContext();
-            const survey = captureSurvey();
+        async function generatePDF(savedSurvey = null, suppliedContext = null) {
+            const context = suppliedContext || sessionContext();
+            checkSession(context);
+            const survey = savedSurvey || captureSurvey();
             const setText = (id, value) => { document.getElementById(id).textContent = value || 'Not recorded'; };
             setText('pdf-date', new Date().toLocaleDateString('en-GB'));
             for (const [id, key] of [['pdf-address','address'],['pdf-postcode','postcode'],['pdf-name','name']]) setText(id, survey.details[key]);
