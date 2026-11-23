@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'supabase/functions/create-survey-checkout/**'
+      - 'app.js'
       - 'tests/test_staging_checkout_safety.mjs'
       - '.github/workflows/review-staging-checkout.yml'
   workflow_dispatch:
@@ -25,5 +26,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Syntax-check staging application (no deployment)
+        run: node --check app.js
       - name: Type-check staging checkout Edge Function (no deployment)
         run: deno check supabase/functions/create-survey-checkout/index.ts
