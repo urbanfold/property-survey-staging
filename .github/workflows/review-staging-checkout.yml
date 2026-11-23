@@ -1,0 +1,32 @@
+name: Review staging checkout safety
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/create-survey-checkout/**'
+      - 'app.js'
+      - 'tests/test_staging_checkout_safety.mjs'
+      - '.github/workflows/review-staging-checkout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-staging-checkout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static fail-closed checks (no deployment or Stripe calls)
+        run: node --test tests/test_staging_checkout_safety.mjs
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Syntax-check staging application (no deployment)
+        run: node --check app.js
+      - name: Type-check staging checkout Edge Function (no deployment)
+        run: deno check supabase/functions/create-survey-checkout/index.ts
