@@ -91,6 +91,18 @@
 
         #pdf-content { display: none; padding: 20px; font-family: Arial, sans-serif; color: #333; }
         #pdf-content h1 { color: #2563eb; text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 10px; }
+        #pdf-content .urbanfold-report-header { text-align: center; border-bottom: 3px solid #264c58; padding: 14px 0 20px; margin-bottom: 18px; }
+        #pdf-content .urbanfold-report-wordmark { font-family: Arial, sans-serif; font-weight: 800; font-size: 32px; letter-spacing: 5px; color: #264c58; }
+        #pdf-content .urbanfold-report-subtitle { margin-top: 5px; font-size: 13px; letter-spacing: 0.5px; color: #3b535f; }
+        #pdf-content .urbanfold-report-header h1 { font-size: 23px; color: #264c58; border: 0; margin: 23px 0 10px; padding: 0; }
+        #pdf-content .urbanfold-report-description { color: #526873; font-size: 12px; }
+        #pdf-content .urbanfold-report-footer { margin-top: 28px; border-top: 2px solid #264c58; padding-top: 12px; text-align: center; color: #264c58; break-inside: avoid; page-break-inside: avoid; }
+        #pdf-content .urbanfold-report-footer p { font-size: 11px; }
+        #pdf-content .urbanfold-report-disclaimer { color: #5d6570; font-size: 10px !important; margin-top: 12px !important; line-height: 1.4; }
+        #pdf-content .urbanfold-photo-card { break-inside: avoid; page-break-inside: avoid; margin: 14px 0; padding: 10px; border: 1px solid #d6e0e5; }
+        #pdf-content .urbanfold-photo-card h3 { font-size: 14px; margin: 0 0 8px; color: #264c58; }
+        #pdf-content .urbanfold-photo-card img { display: block; width: 100%; max-height: 410px; object-fit: contain; }
+
         #pdf-content h2 { color: #1f2937; margin-top: 20px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
         #pdf-content p { margin: 5px 0; font-size: 14px; }
         #pdf-content .room-item { break-inside: avoid; page-break-inside: avoid; background: #f9fafb; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #e5e7eb; }
@@ -104,8 +116,13 @@
     </div>
 
     <div id="pdf-content">
-        <h1>Urbanfold Property Survey Report</h1>
-        <p><strong>Generated:</strong> <span id="pdf-date"></span></p>
+        <div class="urbanfold-report-header">
+            <div class="urbanfold-report-wordmark">URBANFOLD</div>
+            <div class="urbanfold-report-subtitle">Architectural Planning &amp; Design Services</div>
+            <h1>PROPERTY SURVEY REPORT</h1>
+            <p class="urbanfold-report-description">Property information, measurements and proposed alterations</p>
+        </div>
+        <p><strong>Report generated:</strong> <span id="pdf-date"></span></p>
         <h2>Property Details</h2>
         <p><strong>Address:</strong> <span id="pdf-address"></span></p>
         <p><strong>Postcode:</strong> <span id="pdf-postcode"></span></p>
@@ -117,6 +134,16 @@
         <p><strong>Description:</strong> <span id="pdf-ext-desc"></span></p>
         <h2>Room Measurements</h2>
         <div id="pdf-rooms-list"></div>
+        <section id="pdf-photo-section" hidden>
+            <h2>Survey Photographs</h2>
+            <div id="pdf-photo-list"></div>
+        </section>
+        <div class="urbanfold-report-footer">
+            <strong>URBANFOLD</strong> | Architectural Planning &amp; Design Services
+            <p>Email: survey@urbanfold.uk | Telephone: 07762 238271</p>
+            <p>Website: www.urbanfold.uk</p>
+            <p class="urbanfold-report-disclaimer">This document records information supplied during the property survey. It is not planning permission, a structural assessment or building regulations approval. Measurements and site conditions should be independently checked before design or construction work.</p>
+        </div>
     </div>
 
     <div class="container">

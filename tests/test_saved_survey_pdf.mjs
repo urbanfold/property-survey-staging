@@ -24,7 +24,7 @@ test('PDF reads named survey by ID, guards session and never persists', () => {
 });
 
 test('PDF renderer uses snapshot when supplied and retains legacy submission export', () => {
-  assert.match(pdf, /async function generatePDF\(savedSurvey = null, suppliedContext = null\)/);
+  assert.match(pdf, /async function generatePDF\(savedSurvey = null, suppliedContext = null, options = \{\}\)/);
   assert.match(pdf, /const survey = savedSurvey \|\| captureSurvey\(\);/);
   assert.match(pdf, /checkSession\(context\)/);
   assert.match(pdf, /html2pdf\(\)/);
