@@ -649,8 +649,29 @@
             notice.hidden = false;
             try { sessionStorage.removeItem(`urbanfold_checkout_attempt_${currentUser.id}`); } catch (_) {}
             if (state === 'cancelled') notice.textContent = 'Checkout was cancelled. Your existing surveys are still available.';
-            else if ((params.get('checkout_session_id') || '').startsWith('cs_test_')) {
-                notice.textContent = 'Stripe test checkout returned. Test payments do not unlock live survey credits.';
+            else if (/^cs_test_[A-Za-z0-9]+$/.test(params.get('checkout_session_id') || '')) {
+                // Staging-only: the Stripe return URL is NOT proof of payment.
+                // The server independently verifies the buyer, payment and credit approval.
+                const returnedSessionId = params.get('checkout_session_id');
+                notice.textContent = 'Stripe test checkout returned. Checking the payment securely...';
+                void (async () => {
+                    const context = sessionContext();
+                    try {
+                        const { data, error } = await sb.functions.invoke('staging-survey-verify-and-approve-test-credit', {
+                            body: { checkout_session_id: returnedSessionId }
+                        });
+                        checkSession(context);
+                        if (error || data?.verified !== true || data?.approved !== true) {
+                            notice.textContent = 'Test payment credit is not confirmed. Do not pay again; contact survey@urbanfold.uk if needed.';
+                            return;
+                        }
+                        // This RPC checks the actual database allowance, not the browser URL.
+                        await checkPurchasedCredit();
+                    } catch (_) {
+                        if (sessionIsCurrent(context)) notice.textContent =
+                            'Test payment could not be confirmed. Your existing surveys are unaffected. Do not pay again; contact survey@urbanfold.uk if needed.';
+                    }
+                })();
             } else void checkPurchasedCredit();
             // Query parameters are navigation messages only, never proof of payment.
             params.delete('payment'); params.delete('checkout_session_id');
