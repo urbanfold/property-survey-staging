@@ -12,6 +12,9 @@
         let recoveryUserId = null;
         const sb = window.supabase.createClient('https://hexhtduvqzleoazusskh.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhleGh0ZHV2cXpsZW9henVzc2toIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM3MjAyMTUsImV4cCI6MjEwOTI5NjIxNX0.T3qVJgnGLSmaKMJKfqZCYLcsH1QXKYf7JScBbUdkNwk');
         const ADMIN_EMAIL = 'urbanfolduk@gmail.com';
+        // STAGING ONLY: identity already authorised by the separate admin-review Edge Function.
+        const STAGING_EXPORT_ADMIN_UID = 'b83f87d8-abf2-4800-beab-8279917804c7';
+        const isStagingExportAdmin = () => currentUser?.id === STAGING_EXPORT_ADMIN_UID;
         // Recovery is deliberately tab-memory only: never serialize it while signed out.
         let lockedSurveyRecovery = null;
         let recoveringLockedSurvey = false;
@@ -421,7 +424,7 @@
             list.textContent = 'Loading surveys...';
             try {
                 let query = sb.from('properties').select('*').order('created_at', { ascending: false });
-                if (currentUser.email !== ADMIN_EMAIL) query = query.eq('user_id', currentUser.id);
+                if (!isStagingExportAdmin()) query = query.eq('user_id', currentUser.id);
                 const data = await requireResult(query, 'Load surveys', context);
                 checkSession(context);
                 list.replaceChildren();
@@ -441,7 +444,7 @@
                     const description = document.createElement('p');
                     description.textContent = `${prop.postcode || 'No postcode'} • ${new Date(prop.created_at).toLocaleDateString('en-GB')}`;
                     item.append(title, description);
-                    if (currentUser.email === ADMIN_EMAIL) {
+                    if (isStagingExportAdmin()) {
                         const button = document.createElement('button');
                         button.className = 'btn btn-download';
                         button.textContent = 'Download Survey Pack (ZIP)';
@@ -1534,7 +1537,7 @@
                 await notifySurveySaved(savedSnapshot);
                 checkSession(context);
                 document.getElementById('admin-pdf-section').style.display =
-                    currentUser && currentUser.email === ADMIN_EMAIL ? 'block' : 'none';
+                    isStagingExportAdmin() ? 'block' : 'none';
             } catch (err) {
                 if (!sessionIsCurrent(context)) return;
                 draftWritesEnabled = true;
