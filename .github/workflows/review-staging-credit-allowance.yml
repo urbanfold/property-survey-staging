@@ -1,0 +1,24 @@
+name: Review staging test-credit allowance
+
+on:
+  pull_request:
+    paths:
+      - 'docs/review-only-staging-test-credit-allowance.sql'
+      - 'tests/test_review_staging_credit_allowance.mjs'
+      - '.github/workflows/review-staging-credit-allowance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify documented staging-only guardrails (no database changes)
+        run: node --test tests/test_review_staging_credit_allowance.mjs
