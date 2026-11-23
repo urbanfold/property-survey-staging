@@ -32,3 +32,16 @@ test('never deploy review SQL automatically', () => {
   assert.match(sql,/REVIEW ONLY/);
   assert.match(sql,/NOT deployed/);
 });
+
+test('recorded refund/dispute webhook events block unused staging test credits', () => {
+  const holds = sql.match(/urbanfold_retention\.staging_stripe_webhook_review_events e/g) || [];
+  assert.equal(holds.length, 2, 'both allowance and insert trigger need an event hold');
+  for (const eventType of ['refund.created', 'refund.updated', 'charge.refund.updated',
+    'charge.refunded', 'charge.dispute.created', 'charge.dispute.updated',
+    'charge.dispute.closed']) {
+    const occurrences = sql.split("'" + eventType + "'").length - 1;
+    assert.equal(occurrences, 2, eventType + ' should be in both eligibility checks');
+  }
+  assert.match(sql, /e\.payment_intent_id = p\.payment_intent_id/);
+  assert.match(sql, /undelivered events or refund objects missing an/);
+});
