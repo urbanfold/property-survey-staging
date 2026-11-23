@@ -49,6 +49,23 @@ begin
       select 1 from public.survey_credit_revocations r
       where r.payment_intent_id = p.payment_intent_id
     )
+    -- The already-deployed staging webhook audits signed refund/dispute events.
+    -- Fail closed for ANY such event against an unused test credit, including
+    -- pending or closed states: never auto-restore without manual review.
+    -- This does NOT cover undelivered events or refund objects missing an
+    -- associated PaymentIntent ID; operational review is still required.
+    and (
+      p.live_mode or not exists (
+        select 1
+        from urbanfold_retention.staging_stripe_webhook_review_events e
+        where e.payment_intent_id = p.payment_intent_id
+          and e.event_type in (
+            'refund.created', 'refund.updated', 'charge.refund.updated',
+            'charge.refunded', 'charge.dispute.created',
+            'charge.dispute.updated', 'charge.dispute.closed'
+          )
+      )
+    )
     and (
       p.live_mode
       or (
@@ -102,6 +119,23 @@ begin
       select 1 from public.survey_credit_revocations r
       where r.payment_intent_id = p.payment_intent_id
     )
+    -- The already-deployed staging webhook audits signed refund/dispute events.
+    -- Fail closed for ANY such event against an unused test credit, including
+    -- pending or closed states: never auto-restore without manual review.
+    -- This does NOT cover undelivered events or refund objects missing an
+    -- associated PaymentIntent ID; operational review is still required.
+    and (
+      p.live_mode or not exists (
+        select 1
+        from urbanfold_retention.staging_stripe_webhook_review_events e
+        where e.payment_intent_id = p.payment_intent_id
+          and e.event_type in (
+            'refund.created', 'refund.updated', 'charge.refund.updated',
+            'charge.refunded', 'charge.dispute.created',
+            'charge.dispute.updated', 'charge.dispute.closed'
+          )
+      )
+    )
     and (
       p.live_mode
       or (
@@ -132,6 +166,7 @@ commit;
 -- (2) verify test-session approvals cannot be inserted by anon/authenticated;
 -- (3) verify only a Stripe-verified server action can approve each test payment;
 -- (4) test first survey, second survey credit consumption, third survey rejection;
--- (5) test old unapproved payments, refund revocation, parallel requests, duplicate
+-- (5) test old unapproved payments, refund revocation, review-webhook holds,
+--     and refund events without a matched PaymentIntent; test parallel requests, duplicate
 --     payment verification, buyer mismatch, and missing JWT issuer.
 -- The checks in this file are not proof of real Stripe payment status.
