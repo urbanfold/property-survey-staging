@@ -1,0 +1,22 @@
+name: Review staging dashboard credit refresh
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'tests/test_staging_dashboard_credit_refresh.mjs'
+      - '.github/workflows/review-staging-dashboard-credit-refresh.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dashboard-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check app.js
+      - run: node --test tests/test_staging_dashboard_credit_refresh.mjs
