@@ -80,30 +80,16 @@ Deno.serve(async (request: Request) => {
     const db = createClient(STAGING_URL, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    // Use the authenticated owner, never a browser-supplied user ID.
-    let query = db.from("staging_survey_checkout_attempts")
-      .select("checkout_session_id,user_id").eq("user_id", user.id)
-      .order("created_at", { ascending: false }).limit(6);
-    if (typeof reference === "string") query = query.eq("checkout_session_id", reference);
-    const { data: tracked, error: trackingError } = await query;
-    if (trackingError || !Array.isArray(tracked) || tracked.length > 6 ||
-        tracked.some(row => row.user_id !== user.id || typeof row.checkout_session_id !== "string" ||
-          !ID.test(row.checkout_session_id) || (reference !== undefined && row.checkout_session_id !== reference))) {
+    // Select eligible sessions using the authenticated owner and server-only RPC.
+    const { data: candidates, error: selectionError } = await db.rpc("list_staging_recoverable_survey_sessions", {
+      buyer_id: user.id, session_reference: reference ?? null,
+    });
+    if (selectionError || !Array.isArray(candidates) || candidates.length > 6 ||
+        new Set(candidates.map(row => row?.checkout_session_id)).size !== candidates.length ||
+        candidates.some(row => !row || row.user_id !== user.id || row.live_mode !== false ||
+          typeof row.checkout_session_id !== "string" || row.checkout_session_id.length > 255 ||
+          !ID.test(row.checkout_session_id) || (reference !== undefined && row.checkout_session_id !== reference)))
       return respond({ error: "Checkout recovery unavailable." }, 503);
-    }
-    // Prioritize recorded unused sandbox purchases, including older credits.
-    let purchaseQuery = db.from("survey_credit_purchases")
-      .select("checkout_session_id,user_id,live_mode").eq("user_id", user.id)
-      .eq("live_mode", false).is("redeemed_property_id", null)
-      .order("purchased_at", { ascending: true }).limit(6);
-    if (typeof reference === "string") purchaseQuery = purchaseQuery.eq("checkout_session_id", reference);
-    const { data: purchases, error: purchaseError } = await purchaseQuery;
-    if (purchaseError || !Array.isArray(purchases) || purchases.length > 6 ||
-        purchases.some(row => row.user_id !== user.id || row.live_mode !== false ||
-          typeof row.checkout_session_id !== "string" || !ID.test(row.checkout_session_id) ||
-          (reference !== undefined && row.checkout_session_id !== reference)))
-      return respond({ error: "Purchase recovery unavailable." }, 503);
-    const candidates = [...new Map([...purchases, ...tracked].map(row => [row.checkout_session_id,row])).values()];
     if (reference !== undefined && candidates.length !== 1)
       return respond({ error: "Checkout reference unavailable for this account." }, 404);
     let approved = 0, pending = 0, ineligible = 0;
