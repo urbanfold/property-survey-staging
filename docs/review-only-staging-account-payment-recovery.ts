@@ -157,6 +157,12 @@ Deno.serve(async (request: Request) => {
       verified: true, approved: false,
       error: "Purchase recorded, but credit approval is pending server review.",
     }, 503);
+    const { error: attestationError } = await db.rpc("attest_staging_survey_credit", {
+      session_id: sessionId, intent_id: intentId, buyer_id: user.id,
+    });
+    if (attestationError) return respond({
+      verified: true, approved: false, error: "Recent staging credit verification could not be recorded.",
+    }, 503);
     approved++;
     }
     return respond({ test_mode: true, checked: Math.min(tracked.length, 5),
