@@ -91,10 +91,23 @@ Deno.serve(async (request: Request) => {
           !ID.test(row.checkout_session_id) || (reference !== undefined && row.checkout_session_id !== reference))) {
       return respond({ error: "Checkout recovery unavailable." }, 503);
     }
-    if (reference !== undefined && tracked.length !== 1)
+    // Prioritize recorded unused sandbox purchases, including older credits.
+    let purchaseQuery = db.from("survey_credit_purchases")
+      .select("checkout_session_id,user_id,live_mode").eq("user_id", user.id)
+      .eq("live_mode", false).is("redeemed_property_id", null)
+      .order("purchased_at", { ascending: true }).limit(6);
+    if (typeof reference === "string") purchaseQuery = purchaseQuery.eq("checkout_session_id", reference);
+    const { data: purchases, error: purchaseError } = await purchaseQuery;
+    if (purchaseError || !Array.isArray(purchases) || purchases.length > 6 ||
+        purchases.some(row => row.user_id !== user.id || row.live_mode !== false ||
+          typeof row.checkout_session_id !== "string" || !ID.test(row.checkout_session_id) ||
+          (reference !== undefined && row.checkout_session_id !== reference)))
+      return respond({ error: "Purchase recovery unavailable." }, 503);
+    const candidates = [...new Map([...purchases, ...tracked].map(row => [row.checkout_session_id,row])).values()];
+    if (reference !== undefined && candidates.length !== 1)
       return respond({ error: "Checkout reference unavailable for this account." }, 404);
     let approved = 0, pending = 0, ineligible = 0;
-    for (const row of tracked.slice(0, 5)) {
+    for (const row of candidates.slice(0, 5)) {
     const sessionId = row.checkout_session_id;
     const session = await stripeGet("checkout/sessions/" + encodeURIComponent(sessionId), secret);
     const metadata = object(session.metadata);
@@ -130,9 +143,18 @@ Deno.serve(async (request: Request) => {
       charge.payment_intent === intentId && charge.paid === true &&
       charge.captured === true && charge.amount === 600 &&
       charge.currency === "gbp" &&
-      charge.amount_refunded === 0 && charge.refunded === false &&
-      charge.disputed === false;
+      typeof charge.amount_refunded === "number" && Number.isInteger(charge.amount_refunded) &&
+      charge.amount_refunded >= 0 && charge.amount_refunded <= 600 &&
+      typeof charge.refunded === "boolean" && typeof charge.disputed === "boolean";
     if (!valid) { ineligible++; continue; }
+    if (charge.amount_refunded > 0 || charge.refunded || charge.disputed) {
+      const { error: revocationError } = await db.rpc("revoke_survey_purchase", {
+        intent_id: intentId, revocation_reason: charge.disputed ? "staging.reconciliation.disputed" : "staging.reconciliation.refunded",
+      });
+      if (revocationError) return respond({ error: "Staging revocation could not be recorded." }, 503);
+      ineligible++;
+      continue;
+    }
 
     // Order is deliberate: record_survey_purchase is idempotent and enforces
     // unique Checkout Session and PaymentIntent ownership. If approval fails,
@@ -165,8 +187,8 @@ Deno.serve(async (request: Request) => {
     }, 503);
     approved++;
     }
-    return respond({ test_mode: true, checked: Math.min(tracked.length, 5),
-      approved_count: approved, pending, ineligible, additional_attempts: tracked.length > 5 });
+    return respond({ test_mode: true, checked: Math.min(candidates.length, 5),
+      approved_count: approved, pending, ineligible, additional_attempts: candidates.length > 5 });
   } catch {
     return respond({ verified: false, approved: false,
       error: "Stripe test verification unavailable; credit not approved." }, 503);
