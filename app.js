@@ -420,6 +420,7 @@
             checkSession(context);
             saveDraft();
             showView('view-dashboard');
+            document.getElementById('refresh-survey-credit').hidden = false;
             handlePaymentReturn();
             void refreshConfirmedCreditNotice(context);
             const list = document.getElementById('dashboard-list');
@@ -657,7 +658,7 @@
             }
         }
 
-        async function checkPurchasedCredit() {
+        async function checkPurchasedCredit(reference) {
             const context = sessionContext();
             if (!currentUser || checkingPurchasedCredit) return;
             checkingPurchasedCredit = true;
@@ -670,6 +671,11 @@
             button.disabled = true;
             notice.textContent = 'Checking verified payment confirmation...';
             try {
+                const body = typeof reference === 'string' && /^cs_test_[A-Za-z0-9]+$/.test(reference) ? { checkout_session_id: reference } : {};
+                const { data, error } = await sb.functions.invoke('staging-recover-survey-payment', { body });
+                checkSession(context);
+                if (error || data?.test_mode !== true || !Number.isInteger(data?.checked) || !Number.isInteger(data?.approved_count))
+                    throw new Error('Staging recovery unavailable');
                 const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Check payment confirmation', context);
                 checkSession(context);
                 if (allowance.paid_credits > 0) {
@@ -690,30 +696,9 @@
             notice.hidden = false;
             try { sessionStorage.removeItem(`urbanfold_checkout_attempt_${currentUser.id}`); } catch (_) {}
             if (state === 'cancelled') notice.textContent = 'Checkout was cancelled. Your existing surveys are still available.';
-            else if (/^cs_test_[A-Za-z0-9]+$/.test(params.get('checkout_session_id') || '')) {
-                // Staging-only: the Stripe return URL is NOT proof of payment.
-                // The server independently verifies the buyer, payment and credit approval.
-                const returnedSessionId = params.get('checkout_session_id');
-                notice.textContent = 'Stripe test checkout returned. Checking the payment securely...';
-                void (async () => {
-                    const context = sessionContext();
-                    try {
-                        const { data, error } = await sb.functions.invoke('staging-survey-verify-and-approve-test-credit', {
-                            body: { checkout_session_id: returnedSessionId }
-                        });
-                        checkSession(context);
-                        if (error || data?.verified !== true || data?.approved !== true) {
-                            notice.textContent = 'Test payment credit is not confirmed. Do not pay again; contact survey@urbanfold.uk if needed.';
-                            return;
-                        }
-                        // This RPC checks the actual database allowance, not the browser URL.
-                        await checkPurchasedCredit();
-                    } catch (_) {
-                        if (sessionIsCurrent(context)) notice.textContent =
-                            'Test payment could not be confirmed. Your existing surveys are unaffected. Do not pay again; contact survey@urbanfold.uk if needed.';
-                    }
-                })();
-            } else void checkPurchasedCredit();
+            else if (/^cs_test_[A-Za-z0-9]+$/.test(params.get('checkout_session_id') || ''))
+                void checkPurchasedCredit(params.get('checkout_session_id'));
+            else notice.textContent = 'Invalid staging checkout reference. Do not pay again; check payment confirmation.';
             // Query parameters are navigation messages only, never proof of payment.
             params.delete('payment'); params.delete('checkout_session_id');
             history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
@@ -1007,6 +992,19 @@
                 const payload = { surveyor_name: document.getElementById('detail-name').value,
                     client_email: document.getElementById('detail-client-email').value, address, postcode,
                     notes: document.getElementById('detail-notes').value };
+                if (!currentPropertyId && currentUser.email !== ADMIN_EMAIL) {
+                    const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Check survey allowance', context);
+                    checkSession(context);
+                    if (!allowance?.free_available && !allowance?.unlimited) {
+                        const { data: recovery, error } = await sb.functions.invoke('staging-recover-survey-payment', { body: {} });
+                        checkSession(context);
+                        if (error || recovery?.test_mode !== true || !Number.isInteger(recovery?.checked))
+                            throw new Error('Test payment verification unavailable. Retry saving; do not pay again.');
+                        const refreshed = await requireResult(sb.rpc('get_survey_allowance'), 'Check verified credit', context);
+                        checkSession(context);
+                        if (!refreshed?.can_create) throw new Error('No available test credit confirmed. Check payment confirmation before paying again.');
+                    }
+                }
                 const data = await requireResult(currentPropertyId
                     ? sb.from('properties').update(payload).eq('id', currentPropertyId).select().single()
                     : sb.from('properties').upsert({ ...payload, id: newPropertyId ||= crypto.randomUUID(), user_id: currentUser.id }, { onConflict: 'id' }).select().single(), 'Save property details');
@@ -1017,7 +1015,7 @@
                 showView('view-type');
             } catch (error) {
                 if (!sessionIsCurrent(context)) return;
-                if (error.message.includes('URBANFOLD_SURVEY_LIMIT')) showAdditionalSurveyDialog();
+                if (error.message.includes('URBANFOLD_SURVEY_LIMIT')) alert('No recently verified credit available. Retry payment verification before buying again.');
                 else if (error.message.includes('URBANFOLD_ADDRESS_LOCKED')) alert('This submitted property address is locked. Contact survey@urbanfold.uk for a correction, or start an additional survey for a different property.');
                 else alert(error.message);
             }
