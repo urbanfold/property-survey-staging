@@ -15,7 +15,7 @@ function response(data: Record<string, unknown>, status = 200) {
       "content-type": "application/json",
       "cache-control": "no-store",
       "access-control-allow-origin": EXPECTED_ORIGIN,
-      "access-control-allow-headers": "authorization,apikey,content-type",
+      "access-control-allow-headers": "authorization,apikey,content-type,x-client-info",
       "access-control-allow-methods": "POST,OPTIONS",
       "vary": "Origin",
     },
