@@ -95,6 +95,7 @@
             signedPhotoUrls.clear(); photoJobs.clear();
             savingDetails = false; savingProgress = false; submittingSurvey = false;
             openingCheckout = false; checkingPurchasedCredit = false;
+            resetPaymentNotice();
             disconnectLeicaTest();
             document.querySelectorAll('#view-details input, #view-details textarea, #view-type select, #view-extension input, #view-extension textarea, #view-auth input').forEach(input => {
                 if (input.type === 'checkbox') input.checked = false; else input.value = '';
@@ -420,6 +421,7 @@
             saveDraft();
             showView('view-dashboard');
             handlePaymentReturn();
+            void refreshConfirmedCreditNotice(context);
             const list = document.getElementById('dashboard-list');
             list.textContent = 'Loading surveys...';
             try {
@@ -621,10 +623,46 @@
         }
 
         let checkingPurchasedCredit = false;
+        let paymentNoticeReady = false;
+        let paymentNoticeRevision = 0;
+        function resetPaymentNotice() {
+            paymentNoticeReady = false;
+            paymentNoticeRevision++;
+            const notice = document.getElementById('payment-notice');
+            const button = document.getElementById('refresh-survey-credit');
+            notice.textContent = '';
+            notice.hidden = true;
+            button.hidden = true;
+            button.disabled = false;
+        }
+
+        // Only refresh a previously confirmed available credit. Preserve pending,
+        // cancelled and failed payment notices; the database remains authoritative.
+        async function refreshConfirmedCreditNotice(context = sessionContext()) {
+            if (!currentUser || !paymentNoticeReady || checkingPurchasedCredit) return;
+            const revision = ++paymentNoticeRevision;
+            const isCurrent = () => sessionIsCurrent(context) && paymentNoticeReady &&
+                revision === paymentNoticeRevision;
+            try {
+                const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Refresh available credit', context);
+                if (!isCurrent()) return;
+                if (allowance?.paid_credits === 0) resetPaymentNotice();
+                else if (!(allowance?.paid_credits > 0)) throw new Error('Invalid allowance response');
+            } catch (_) {
+                if (!isCurrent()) return;
+                paymentNoticeReady = false;
+                document.getElementById('payment-notice').textContent =
+                    'Your available survey credit could not be refreshed. Check payment confirmation before paying again.';
+                document.getElementById('refresh-survey-credit').hidden = false;
+            }
+        }
+
         async function checkPurchasedCredit() {
             const context = sessionContext();
             if (!currentUser || checkingPurchasedCredit) return;
             checkingPurchasedCredit = true;
+            paymentNoticeReady = false;
+            paymentNoticeRevision++;
             const notice = document.getElementById('payment-notice');
             const button = document.getElementById('refresh-survey-credit');
             notice.hidden = false;
@@ -632,8 +670,10 @@
             button.disabled = true;
             notice.textContent = 'Checking verified payment confirmation...';
             try {
-                const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Check payment confirmation');
+                const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Check payment confirmation', context);
+                checkSession(context);
                 if (allowance.paid_credits > 0) {
+                    paymentNoticeReady = true;
                     notice.textContent = 'Payment confirmed. Your additional survey credit is ready—choose Start New Survey.';
                     button.hidden = true;
                 } else notice.textContent = 'No additional survey credit has been confirmed yet. Payment confirmation can take a short time. Check again before paying again; contact survey@urbanfold.uk if needed.';
@@ -645,6 +685,7 @@
             const params = new URLSearchParams(location.search);
             const state = params.get('payment');
             if (!['success','cancelled'].includes(state)) return;
+            resetPaymentNotice();
             const notice = document.getElementById('payment-notice');
             notice.hidden = false;
             try { sessionStorage.removeItem(`urbanfold_checkout_attempt_${currentUser.id}`); } catch (_) {}
