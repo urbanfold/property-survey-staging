@@ -594,6 +594,17 @@
         }
         function closeAdditionalSurveyDialog() { document.getElementById('additional-survey-dialog').close(); }
 
+        async function recoverBeforeNewCheckout(context) {
+            const { data, error } = await sb.functions.invoke('staging-recover-survey-payment', { body: {} });
+            checkSession(context);
+            if (error || data?.test_mode !== true || !Number.isInteger(data.checked) ||
+                !Number.isInteger(data.approved_count) || !Number.isInteger(data.pending))
+                throw new Error('Previous test payment could not be checked. Do not pay again; try payment confirmation.');
+            const allowance = await readSurveyAllowance();
+            checkSession(context);
+            return { allowance, unresolved: data.pending > 0 || data.additional_attempts === true };
+        }
+
         let openingCheckout = false;
         async function buyAdditionalSurvey() {
             const context = sessionContext();
@@ -604,6 +615,14 @@
             button.disabled = true;
             status.textContent = 'Opening secure Stripe Checkout...';
             try {
+                const previous = await recoverBeforeNewCheckout(context);
+                if (previous.allowance?.can_create) {
+                    closeAdditionalSurveyDialog();
+                    alert('A survey credit is already available. Choose Start New Survey.');
+                    return;
+                }
+                if (previous.unresolved || previous.allowance?.setup_pending)
+                    throw new Error('A previous test payment or setup needs confirmation. Do not pay again; contact survey@urbanfold.uk.');
                 const key = `urbanfold_checkout_attempt_${currentUser.id}`;
                 let attempt;
                 try { attempt = sessionStorage.getItem(key); } catch (_) {}
@@ -682,7 +701,8 @@
                     paymentNoticeReady = true;
                     notice.textContent = 'Payment confirmed. Your additional survey credit is ready—choose Start New Survey.';
                     button.hidden = true;
-                } else notice.textContent = 'No additional survey credit has been confirmed yet. Payment confirmation can take a short time. Check again before paying again; contact survey@urbanfold.uk if needed.';
+                } else if (data.additional_attempts || data.pending > 0) notice.textContent = 'Previous test payments need confirmation. Do not pay again; contact survey@urbanfold.uk.';
+                else notice.textContent = 'No additional survey credit has been confirmed yet. Payment confirmation can take a short time. Check again before paying again; contact survey@urbanfold.uk if needed.';
             } catch (_) { if (sessionIsCurrent(context)) notice.textContent = 'Payment confirmation could not be checked. Your existing surveys remain available. Please try again or contact survey@urbanfold.uk.'; }
             finally { if (sessionIsCurrent(context)) { checkingPurchasedCredit = false; button.disabled = false; } }
         }
@@ -709,7 +729,17 @@
             if (!currentUser) return alert('Please sign in first.');
             if (currentUser.email !== ADMIN_EMAIL) {
                 try {
-                    const allowance = await readSurveyAllowance();
+                    const context = sessionContext();
+                    let allowance = await readSurveyAllowance();
+                    checkSession(context);
+                    if (!allowance?.can_create && !allowance?.setup_pending) {
+                        const recovery = await recoverBeforeNewCheckout(context);
+                        allowance = recovery.allowance;
+                        if (!allowance?.can_create && recovery.unresolved) {
+                            alert('A previous test payment needs confirmation. Do not pay again. Check payment confirmation or contact survey@urbanfold.uk.');
+                            return;
+                        }
+                    }
                     if (!allowance?.can_create) { showAdditionalSurveyDialog(); return; }
                 } catch (error) { alert('Your survey allowance could not be checked. Please try again or contact survey@urbanfold.uk.'); return; }
             }
