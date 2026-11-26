@@ -1032,6 +1032,19 @@
                 const payload = { surveyor_name: document.getElementById('detail-name').value,
                     client_email: document.getElementById('detail-client-email').value, address, postcode,
                     notes: document.getElementById('detail-notes').value };
+                if (!currentPropertyId) {
+                    const allowance = await readSurveyAllowance();
+                    checkSession(context);
+                    if (!allowance.unlimited && !allowance.free_available && allowance.paid_credits > 0) {
+                        const { data, error } = await sb.functions.invoke('staging-survey-verify-and-approve-test-credit', {
+                            body: { prepare_redemption: true }
+                        });
+                        checkSession(context);
+                        if (error || data?.redemption_ready !== true) {
+                            throw new Error('Your survey credit could not be re-verified. Try saving again before making another payment.');
+                        }
+                    }
+                }
                 const data = await requireResult(currentPropertyId
                     ? sb.from('properties').update(payload).eq('id', currentPropertyId).select().single()
                     : sb.from('properties').upsert({ ...payload, id: newPropertyId ||= crypto.randomUUID(), user_id: currentUser.id }, { onConflict: 'id' }).select().single(), 'Save property details');

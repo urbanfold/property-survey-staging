@@ -66,11 +66,6 @@ Deno.serve(async (request: Request) => {
   try { body = object(await request.json()); } catch {
     return respond({ error: "Invalid request." }, 400);
   }
-  const sessionId = body.checkout_session_id;
-  if (typeof sessionId !== "string" || !ID.test(sessionId)) {
-    return respond({ error: "Only Stripe test Checkout Sessions are allowed." }, 400);
-  }
-
   const secret = Deno.env.get("STAGING_STRIPE_TEST_SECRET_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!/^(?:sk_test_|rk_test_)[A-Za-z0-9]+$/.test(secret) || !serviceKey) {
@@ -78,6 +73,22 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
+    const db = createClient(STAGING_URL, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const prepareRedemption = body.prepare_redemption === true;
+    let sessionId = body.checkout_session_id;
+    if (prepareRedemption) {
+      const { data, error } = await db.rpc("staging_survey_credit_for_verification", { buyer_id: user.id });
+      if (error) return respond({ verified: false, error: "Credit lookup unavailable." }, 503);
+      sessionId = data;
+    }
+    if (typeof sessionId !== "string" || !ID.test(sessionId)) {
+      return respond({ verified: false, error: "No eligible Stripe test Checkout Session." }, 409);
+    }
+
+    // Measure freshness from the start of verification, not when a delayed lookup finishes.
+    const verificationStartedAt = new Date().toISOString();
     const session = await stripeGet("checkout/sessions/" + encodeURIComponent(sessionId), secret);
     const metadata = object(session.metadata);
     const email = user.email.toLowerCase();
@@ -119,9 +130,15 @@ Deno.serve(async (request: Request) => {
       error: "Test payment is not eligible; incomplete, refunded or disputed payments are blocked.",
     }, 409);
 
-    const db = createClient(STAGING_URL, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    if (prepareRedemption) {
+      const { data, error } = await db.from("staging_approved_test_survey_credits")
+        .update({ redemption_verified_at: verificationStartedAt })
+        .eq("checkout_session_id", sessionId)
+        .select("checkout_session_id")
+        .single();
+      if (error || !data) return respond({ verified: false, error: "Redemption verification could not be recorded." }, 503);
+      return respond({ verified: true, redemption_ready: true, test_mode: true });
+    }
 
     // Order is deliberate: record_survey_purchase is idempotent and enforces
     // unique Checkout Session and PaymentIntent ownership. If approval fails,
