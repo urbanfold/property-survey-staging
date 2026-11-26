@@ -420,7 +420,7 @@
             checkSession(context);
             saveDraft();
             showView('view-dashboard');
-            handlePaymentReturn();
+            void handlePaymentReturn();
             void refreshConfirmedCreditNotice(context);
             const list = document.getElementById('dashboard-list');
             list.textContent = 'Loading surveys...';
@@ -657,7 +657,7 @@
             }
         }
 
-        async function checkPurchasedCredit() {
+        async function checkPurchasedCredit(returnedSession = null) {
             const context = sessionContext();
             if (!currentUser || checkingPurchasedCredit) return;
             checkingPurchasedCredit = true;
@@ -670,7 +670,27 @@
             button.disabled = true;
             notice.textContent = 'Checking verified payment confirmation...';
             try {
+                const params = new URLSearchParams(location.search);
+                const sessionId = returnedSession || pendingCheckoutSession() ||
+                    (params.get('payment') === 'success' ? params.get('checkout_session_id') : null);
+                if (/^cs_test_[A-Za-z0-9]+$/.test(sessionId || '')) {
+                    // A stored reference only identifies which payment the server must verify.
+                    const { data, error } = await sb.functions.invoke('staging-survey-verify-and-approve-test-credit', {
+                        body: { checkout_session_id: sessionId }
+                    });
+                    checkSession(context);
+                    if (error || data?.verified !== true || data?.approved !== true) {
+                        notice.textContent = 'Test payment credit is not confirmed. Check again before paying again or contact survey@urbanfold.uk.';
+                        return;
+                    }
+                }
                 const allowance = await requireResult(sb.rpc('get_survey_allowance'), 'Check payment confirmation', context);
+                if (/^cs_test_[A-Za-z0-9]+$/.test(sessionId || '')) {
+                    if (pendingCheckoutSession() === sessionId) {
+                        try { localStorage.removeItem(`urbanfold_pending_checkout_${context.userId}`); } catch (_) {}
+                    }
+                    if (params.get('checkout_session_id') === sessionId) clearPaymentReturnUrl();
+                }
                 checkSession(context);
                 if (allowance.paid_credits > 0) {
                     paymentNoticeReady = true;
@@ -681,42 +701,47 @@
             finally { if (sessionIsCurrent(context)) { checkingPurchasedCredit = false; button.disabled = false; } }
         }
 
-        function handlePaymentReturn() {
+        function clearPaymentReturnUrl() {
+            const params = new URLSearchParams(location.search);
+            params.delete('payment');
+            params.delete('checkout_session_id');
+            history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
+        }
+
+        async function handlePaymentReturn() {
             const params = new URLSearchParams(location.search);
             const state = params.get('payment');
-            if (!['success','cancelled'].includes(state)) return;
-            resetPaymentNotice();
-            const notice = document.getElementById('payment-notice');
-            notice.hidden = false;
-            try { sessionStorage.removeItem(`urbanfold_checkout_attempt_${currentUser.id}`); } catch (_) {}
-            if (state === 'cancelled') notice.textContent = 'Checkout was cancelled. Your existing surveys are still available.';
-            else if (/^cs_test_[A-Za-z0-9]+$/.test(params.get('checkout_session_id') || '')) {
-                // Staging-only: the Stripe return URL is NOT proof of payment.
-                // The server independently verifies the buyer, payment and credit approval.
-                const returnedSessionId = params.get('checkout_session_id');
-                notice.textContent = 'Stripe test checkout returned. Checking the payment securely...';
-                void (async () => {
-                    const context = sessionContext();
-                    try {
-                        const { data, error } = await sb.functions.invoke('staging-survey-verify-and-approve-test-credit', {
-                            body: { checkout_session_id: returnedSessionId }
-                        });
-                        checkSession(context);
-                        if (error || data?.verified !== true || data?.approved !== true) {
-                            notice.textContent = 'Test payment credit is not confirmed. Do not pay again; contact survey@urbanfold.uk if needed.';
-                            return;
-                        }
-                        // This RPC checks the actual database allowance, not the browser URL.
-                        await checkPurchasedCredit();
-                    } catch (_) {
-                        if (sessionIsCurrent(context)) notice.textContent =
-                            'Test payment could not be confirmed. Your existing surveys are unaffected. Do not pay again; contact survey@urbanfold.uk if needed.';
-                    }
-                })();
-            } else void checkPurchasedCredit();
-            // Query parameters are navigation messages only, never proof of payment.
-            params.delete('payment'); params.delete('checkout_session_id');
-            history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
+            if (state === 'cancelled') {
+                resetPaymentNotice();
+                const notice = document.getElementById('payment-notice');
+                notice.hidden = false;
+                notice.textContent = 'Checkout was cancelled. Your existing surveys are still available.';
+            }
+            if (state === 'success' || state === 'cancelled') {
+                try { sessionStorage.removeItem(`urbanfold_checkout_attempt_${currentUser.id}`); } catch (_) {}
+            }
+
+            const returnedSession = state === 'success' ? params.get('checkout_session_id') : null;
+            if (/^cs_test_[A-Za-z0-9]+$/.test(returnedSession || '')) {
+                try {
+                    localStorage.setItem(`urbanfold_pending_checkout_${currentUser.id}`, returnedSession);
+                    clearPaymentReturnUrl();
+                } catch (_) {
+                    // Keep the return URL available for retry if browser storage is unavailable.
+                }
+            } else if (state === 'success' || state === 'cancelled') clearPaymentReturnUrl();
+
+            const recentReturn = state === 'success' ? returnedSession : null;
+            if (state === 'success' || (state !== 'cancelled' && pendingCheckoutSession())) {
+                await checkPurchasedCredit(recentReturn);
+            }
+        }
+
+        function pendingCheckoutSession() {
+            try {
+                const id = localStorage.getItem(`urbanfold_pending_checkout_${currentUser.id}`);
+                return /^cs_test_[A-Za-z0-9]+$/.test(id || '') ? id : null;
+            } catch (_) { return null; }
         }
 
         async function startNewSurvey() {

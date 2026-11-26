@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const src = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const block = src.slice(src.indexOf('let checkingPurchasedCredit = false;'), src.indexOf('        function handlePaymentReturn()'));
+const block = src.slice(src.indexOf('let checkingPurchasedCredit = false;'), src.indexOf('        function clearPaymentReturnUrl()'));
 function setup() {
     const notice = {textContent: 'Payment confirmed', hidden: false};
     const button = {hidden: true, disabled: false};

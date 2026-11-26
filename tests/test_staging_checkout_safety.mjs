@@ -30,6 +30,6 @@ test('staging checkout return verifies with the server before showing credit', (
   const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
   assert.match(app, /staging-survey-verify-and-approve-test-credit/);
   assert.match(app, /data\?\.verified !== true \|\| data\?\.approved !== true/);
-  assert.match(app, /await checkPurchasedCredit\(\)/);
+  assert.match(app, /await checkPurchasedCredit\(recentReturn\)/);
   assert.match(app, /Test payment credit is not confirmed/);
 });
